@@ -16,4 +16,6 @@ def onRead(conn, mask):
         print("Send to client {}".format(conn))
         conn.send(data)
     else:
-        
+        print("Client {} closed".format(conn))
+        myselect.unregister(conn)
+        conn.close()
