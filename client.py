@@ -4,7 +4,7 @@ import socket, threading, logging, sys, time
 import multiprocessing
 
 BUFLINE = 1024
-CLIENT_COUNTS = 1000
+CLIENT_COUNTS = 1200
 
 logging.basicConfig(format='%(asctime)s %(message)s',
                 datefmt='%m/%d/%Y %I:%M:%S %p',
@@ -37,7 +37,7 @@ def process_task(host, port):
     for i in range(CLIENT_COUNTS):
         thread = threading.Thread(target=thread_task, args=(host, port, i, ))
         thread.daemon = True
-        threads.append(thread)                                 
+        threads.append(thread)
         thread.start()
         time.sleep(0.02)
 

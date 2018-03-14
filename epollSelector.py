@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import selectors
 import socket
 
@@ -19,3 +21,22 @@ def onRead(conn, mask):
         print("Client {} closed".format(conn))
         myselect.unregister(conn)
         conn.close()
+
+def createSocket(host, port):
+    fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    fd.bind((host, port))
+    fd.setblocking(False)
+    fd.listen(5)
+    myselect.register(fd, selectors.EVENT_READ, onAccept)
+
+def main():
+
+    fd = createSocket("", 7000)
+    while True:
+        events = myselect.select()
+        for key, mask in events:
+            callback = key.data
+            callback(key.fileobj, mask)
+
+if __name__ == '__main__':
+    main()
