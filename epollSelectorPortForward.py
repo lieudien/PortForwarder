@@ -59,7 +59,7 @@ def createConnection(host, port):
 def main():
 
     
-    for (localPort, hostPort) in config.PORT_HOSTS:
+    for (hostPort, localPort) in config.LOCAL_SERVICE_PORTS:
         fd = createSocket("", localPort)
         listenSocketForPort[fd] = hostPort
     while True:
