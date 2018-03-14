@@ -59,9 +59,9 @@ def createConnection(host, port):
 def main():
 
     
-    for port in config.PORT_HOSTS:
-        fd = createSocket("", port)
-        listenSocketForPort[fd] = port
+    for (localPort, hostPort) in config.PORT_HOSTS:
+        fd = createSocket("", localPort)
+        listenSocketForPort[fd] = hostPort
     while True:
         events = myselect.select()
         for key, mask in events:
