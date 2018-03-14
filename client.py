@@ -3,7 +3,7 @@
 import socket, threading, logging, sys, time
 
 BUFLINE = 1024
-CLIENT_COUNTS = 10
+CLIENT_COUNTS = 1000
 logging.basicConfig(format='%(asctime)s %(message)s',
                 datefmt='%m/%d/%Y %I:%M:%S %p',
                 filename='client_output.log',
@@ -16,17 +16,18 @@ def write_message(message=None):
 
 def client_task(host, port, i):
     fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("host={} port={}".format(host, port))
     fd.connect((host, port))
+    print("Thread {} is running...\n".format(i))
     try:
         while True:
             msg = "Hello message from {}".format(i)
             fd.send(msg)
             data = fd.recv(BUFLINE)
-            print("Received from Server:", data)
+            print("Thread {} received from the server...\n".format(i))
             time.sleep(1)
-    except KeyboardInterrupt:
-        print("socket {} closed".format(i))
+    except socket.error:
+        print("Disconnected from server. Thread {} stopped\n".format(i))
+    finally:
         fd.close()
 
 def main():
@@ -41,11 +42,15 @@ def main():
         thread = threading.Thread(target=client_task, args=(serverHost, serverPort, i, ))
         thread.daemon = True
         threads.append(thread)
+        thread.start()
+        time.sleep(0.02)
 
-    # for i in range(CLIENT_COUNTS):
-    #     threads[i].start()
-    #     threads[i].join()
+    for i in range(CLIENT_COUNTS):
+        threads[i].join()
+
 
 if __name__ == '__main__':
-    main()
-
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Client stopped")

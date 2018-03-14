@@ -1,17 +1,16 @@
-import socket, select
-import traceback
+#!/usr/bin/python
+
+import socket, select, traceback
 
 BUFSIZE = 1024
 BACKLOG = 1024
-EOL1 = b'\n\n'
-EOL2 = b'\n\r\n'
 response = 'Thank you for your message!'
 
 def main(host, port):
 
     listenfd = createSocket(host, port)
     epoll = createEpoll()
-    epoll.register(listenfd.fileno(), select.EPOLLIN | select.EPOLLET)
+    epoll.register(listenfd.fileno(), select.EPOLLIN)
 
     try:
         conns = {}
@@ -69,7 +68,7 @@ def acceptConn(listenfd, conns, requests, responses, epoll):
             print "Received connection from ", addr
             conn.setblocking(0)
             fd = conn.fileno()
-            epoll.register(fd, select.EPOLLIN | select.EPOLLET)
+            epoll.register(fd, select.EPOLLIN)
             conns[fd] = conn
             requests[fd] = b''
             responses[fd] = response
@@ -79,29 +78,27 @@ def acceptConn(listenfd, conns, requests, responses, epoll):
 def receive_request(fd, conns, requests, responses, epoll):
     try:
         while True:
-            requests[fd] += conns[fd].recv(BUFSIZE)
+            requests[fd] = conns[fd].recv(BUFSIZE)
     except Exception, e:
         pass
     """ Handle empty request """
-    # if (requests[fd] == ''):
-    #     print("[{:02d}] exit or hung up".format(fd))
-    #     epoll.unregister(fd)
-    #     conns[fd].close()
-    #     del conns[fd], requests[fd], responses[fd]
-    #     return
-    # else:
-    if EOL1 in requests[fd] or EOL2 in requests[fd]:
-        epoll.modify(fd, select.EPOLLOUT | select.EPOLLET)
+    if (requests[fd] == ''):
+        print("[{:02d}] exit or hung up".format(fd))
+        epoll.unregister(fd)
+        conns[fd].close()
+        del conns[fd], requests[fd], responses[fd]
+        return
+    else:
+        epoll.modify(fd, select.EPOLLOUT)
         print ('-'*40 + '\n' + requests [fd])
 
 def send_response(fd, conns, responses, epoll):
     try:
         while len(responses[fd]) > 0:
             byteswritten = conns[fd].send(response)
-            print("Sending message to {}".format(fd))
+            print("Sending message to client {}".format(fd))
     except Exception, e:
         pass
-    epoll.modify(fd, select.EPOLLET)
 if __name__ == '__main__':
     try:
         main("", 7000)
