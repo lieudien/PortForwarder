@@ -57,7 +57,6 @@ class ForwardingThread(threading.Thread):
         fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         fd.connect((host, port))
         fd.setblocking(False)
-        self._selector.register(fd, selectors.EVENT_READ, self.onRead) 
         return fd
 
     def run(self):
@@ -71,12 +70,12 @@ class ForwardingThread(threading.Thread):
     def getQueuedSocket(self):
         while True:
             (fd, port) = self._newFDQueue.get()
-            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
-            
             forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
             self._clientToServerDict[fd] = forwardFD
             self._serverToClientDict[forwardFD] = fd
-
+            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
+            self._selector.register(forwardFD, selectors.EVENT_READ, self.onRead)
+            
 
 class EpollPortForwarder(object):
 
@@ -85,7 +84,7 @@ class EpollPortForwarder(object):
         self._selector = selectors.EpollSelector()
         self._socketNumber = 0
         self._socketQueues = []
-        self._listenSocketForPort = []
+        self._listenSocketForPort = {}
 
         for _ in range(config.WORKER_THREADS):
             socketQueue = Queue()
@@ -104,7 +103,7 @@ class EpollPortForwarder(object):
         fd, addr = sock.accept()
         print("Received connect from {}".format(addr))
         fd.setblocking(False)
-        self._socketQueues[self._socketNumber % config.WORKER_THREADS].put(fd, self._listenSocketForPort[sock])
+        self._socketQueues[self._socketNumber % config.WORKER_THREADS].put((fd, self._listenSocketForPort[sock]))
         self._socketNumber += 1
 
 
