@@ -7,19 +7,19 @@ from queue import Queue
 import threading
 
 BUFLINE = 1024
-myselect = selectors.EpollSelector()
 listenSocketForPort = {}
 
 
-class forwardingThread(threading.Thread):
+class ForwardingThread(threading.Thread):
 
-    def __init__(self, selector, newFDQueue):
+    def __init__(self, newFDQueue):
 
         threading.Thread.__init__(self)
-        self._selector = selector
+        self._selector = selectors.EpollSelector()
         self._clientToServerDict = {}
         self._serverToClientDict = {}
         self._newFDQueue = newFDQueue
+        threading.Thread(target=self.getQueuedSocket).start()
 
     
     def onRead(self, conn, mask):
@@ -35,7 +35,7 @@ class forwardingThread(threading.Thread):
                 client.send(data)
         else:
             print("connection {} closed".format(conn))
-            myselect.unregister(conn)
+            self._selector.unregister(conn)
             conn.close()
             try:
                 server = self._clientToServerDict[conn]
@@ -69,12 +69,13 @@ class forwardingThread(threading.Thread):
                 callback(key.fileobj, mask)
         
     def getQueuedSocket(self):
-        (fd, port) = self._newFDQueue.get()
-        self._selector.register(fd, selectors.EVENT_READ, self.onRead)
-        
-        forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
-        self._clientToServerDict[fd] = forwardFD
-        self._serverToClientDict[forwardFD] = fd
+        while True:
+            (fd, port) = self._newFDQueue.get()
+            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
+            
+            forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
+            self._clientToServerDict[fd] = forwardFD
+            self._serverToClientDict[forwardFD] = fd
 
 
 class EpollPortForwarder(object):
@@ -85,6 +86,12 @@ class EpollPortForwarder(object):
         self._socketNumber = 0
         self._socketQueues = []
         self._listenSocketForPort = []
+
+        for _ in range(config.WORKER_THREADS):
+            socketQueue = Queue()
+            self._socketQueues.append(socketQueue)
+            thread = ForwardingThread(socketQueue)
+            thread.start()
 
         for (hostPort, localPort) in config.LOCAL_SERVICE_PORTS.items():
             fd = self.createSocket("", localPort)
@@ -97,7 +104,8 @@ class EpollPortForwarder(object):
         fd, addr = sock.accept()
         print("Received connect from {}".format(addr))
         fd.setblocking(False)
-        self._socketQueues[self._socketNumber].put(fd, self._listenSocketForPort[sock])
+        self._socketQueues[self._socketNumber % config.WORKER_THREADS].put(fd, self._listenSocketForPort[sock])
+        self._socketNumber += 1
 
 
     def createSocket(self, host, port):

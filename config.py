@@ -8,3 +8,5 @@ LOCAL_SERVICE_PORTS = {SSH: 7000,
 PORT_HOSTS = {SSH: '192.168.0.14',
               HTTP: '192.168.0.14'
               }
+
+WORKER_THREADS = 4
