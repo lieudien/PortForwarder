@@ -6,15 +6,23 @@ import config
 from queue import Queue
 import threading
 
+
+from multiprocessing import *
+from multiprocessing.reduction import ForkingPickler
+import pickle
+import io
+
 BUFLINE = 1024
 listenSocketForPort = {}
 
 
-class ForwardingThread(threading.Thread):
+
+class ForwardingThread(Process):
 
     def __init__(self, newFDQueue):
 
-        threading.Thread.__init__(self)
+        super(ForwardingThread, self).__init__()
+        
         self._selector = selectors.EpollSelector()
         self._clientToServerDict = {}
         self._serverToClientDict = {}
@@ -71,11 +79,13 @@ class ForwardingThread(threading.Thread):
     def getQueuedSocket(self):
         while True:
             (fd, port) = self._newFDQueue.get()
+            fd = pickle.loads(fd)
             self._selector.register(fd, selectors.EVENT_READ, self.onRead)
             
             forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
             self._clientToServerDict[fd] = forwardFD
             self._serverToClientDict[forwardFD] = fd
+
 
 
 class EpollPortForwarder(object):
@@ -88,7 +98,7 @@ class EpollPortForwarder(object):
         self._listenSocketForPort = []
 
         for _ in range(config.WORKER_THREADS):
-            socketQueue = Queue()
+            socketQueue = Queue
             self._socketQueues.append(socketQueue)
             thread = ForwardingThread(socketQueue)
             thread.start()
@@ -104,6 +114,7 @@ class EpollPortForwarder(object):
         fd, addr = sock.accept()
         print("Received connect from {}".format(addr))
         fd.setblocking(False)
+        fd = self.forking_dumps(fd)
         self._socketQueues[self._socketNumber % config.WORKER_THREADS].put(fd, self._listenSocketForPort[sock])
         self._socketNumber += 1
 
@@ -124,6 +135,12 @@ class EpollPortForwarder(object):
             for key, mask in events:
                 callback = key.data
                 callback(key.fileobj, mask)
+
+    def pickleFD(self. fd):
+        buf = io.StringIO()
+        ForkingPickler(buf).dump(fd)
+        return buf.getvalue()
+
 
 if __name__ == '__main__':
     forwarder = EpollPortForwarder()
