@@ -6,25 +6,19 @@ import config
 import threading
 from queue import Queue
 
-#from multiprocessing import *
+import multiprocessing as mp
+mp.allow_connection_pickling
 
-
-from multiprocessing import *
-from multiprocessing.reduction import ForkingPickler
-import pickle
-import io
 
 BUFLINE = 1024
 listenSocketForPort = {}
 
 
-
-class ForwardingThread(Process):
+class ForwardingThread(threading.Thread):
 
     def __init__(self, newFDQueue):
 
         super(ForwardingThread, self).__init__()
-        
         self._selector = selectors.EpollSelector()
         self._clientToServerDict = {}
         self._serverToClientDict = {}
@@ -32,24 +26,16 @@ class ForwardingThread(Process):
         threading.Thread(target=self.getQueuedSocket).start()
 
     
-    def run(self):
-
-        while True:
-            events = self._selector.select()
-            for key, mask in events:
-                callback = key.data
-                callback(key.fileobj, mask)
-
     def onRead(self, conn, mask):
         data = conn.recv(BUFLINE)
         if data:
             try:
                 host = self._clientToServerDict[conn]
-                #print("forward from client:{0}\nto host:{1}".format(conn, host))
+                print("forward from client:{0}\nto host:{1}".format(conn, host))
                 host.send(data)
             except KeyError:
                 client = self._serverToClientDict[conn]
-                #print("forward from host:{0} to client:{1}".format(conn, client))
+                print("forward from host:{0} to client:{1}".format(conn, client))
                 client.send(data)
         else:
             print("connection {} closed".format(conn))
@@ -71,28 +57,29 @@ class ForwardingThread(Process):
                 self._selector.unregister(client)
 
 
-    def getQueuedSocket(self):
-        while True:
-            (fd, port) = self._newFDQueue.get()
-<<<<<<< HEAD
-            fd = pickle.loads(fd)
-            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
-            
-=======
->>>>>>> bc01ded49342208be1f7b267e848c155ad3d0c18
-            forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
-            self._clientToServerDict[fd] = forwardFD
-            self._serverToClientDict[forwardFD] = fd
-            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
-            self._selector.register(forwardFD, selectors.EVENT_READ, self.onRead)
-            
-
     def createConnection(self, host, port):
         fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         fd.connect((host, port))
         fd.setblocking(False)
+        self._selector.register(fd, selectors.EVENT_READ, self.onRead) 
         return fd
 
+    def run(self):
+
+        while True:
+            events = self._selector.select()
+            for key, mask in events:
+                callback = key.data
+                callback(key.fileobj, mask)
+        
+    def getQueuedSocket(self):
+        while True:
+            (fd, port) = self._newFDQueue.get()
+            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
+            
+            forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
+            self._clientToServerDict[fd] = forwardFD
+            self._serverToClientDict[forwardFD] = fd
 
 
 class EpollPortForwarder(object):
@@ -102,13 +89,13 @@ class EpollPortForwarder(object):
         self._selector = selectors.EpollSelector()
         self._socketNumber = 0
         self._socketQueues = []
-        self._listenSocketForPort = {}
+        self._listenSocketForPort = []
 
         for _ in range(config.WORKER_THREADS):
-            socketQueue = Queue
+            socketQueue = Queue()
             self._socketQueues.append(socketQueue)
-            proc = ForwardingThread(socketQueue)
-            proc.start()
+            thread = ForwardingThread(socketQueue)
+            thread.start()
 
         for (hostPort, localPort) in config.LOCAL_SERVICE_PORTS.items():
             fd = self.createSocket("", localPort)
@@ -119,16 +106,10 @@ class EpollPortForwarder(object):
 
     def onAccept(self, sock, mask):
         fd, addr = sock.accept()
-        #print("Received connect from {}".format(addr))
+        print("Received connect from {}".format(addr))
         fd.setblocking(False)
-<<<<<<< HEAD
-        fd = self.forking_dumps(fd)
         self._socketQueues[self._socketNumber % config.WORKER_THREADS].put(fd, self._listenSocketForPort[sock])
-=======
-        self._socketQueues[self._socketNumber % config.WORKER_THREADS].put((fd, self._listenSocketForPort[sock]))
->>>>>>> bc01ded49342208be1f7b267e848c155ad3d0c18
         self._socketNumber += 1
-        print('{0} connections'.format(self._socketNumber*2))
 
 
     def createSocket(self, host, port):
@@ -136,7 +117,7 @@ class EpollPortForwarder(object):
         fd.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         fd.bind((host, port))
         fd.setblocking(False)
-        fd.listen(100)
+        fd.listen(5)
         self._selector.register(fd, selectors.EVENT_READ, self.onAccept)
         return fd
 
@@ -147,12 +128,6 @@ class EpollPortForwarder(object):
             for key, mask in events:
                 callback = key.data
                 callback(key.fileobj, mask)
-
-    def pickleFD(self. fd):
-        buf = io.StringIO()
-        ForkingPickler(buf).dump(fd)
-        return buf.getvalue()
-
 
 if __name__ == '__main__':
     forwarder = EpollPortForwarder()
