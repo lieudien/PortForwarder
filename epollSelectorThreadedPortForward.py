@@ -6,23 +6,21 @@ import config
 import threading
 from queue import Queue
 
-import multiprocessing as mp
-mp.allow_connection_pickling
-
-
 BUFLINE = 1024
 listenSocketForPort = {}
 
 
 class ForwardingThread(threading.Thread):
 
-    def __init__(self, newFDQueue):
+    def __init__(self, newFDQueue, threadNum):
 
         super(ForwardingThread, self).__init__()
+        self._threadNum = threadNum
         self._selector = selectors.EpollSelector()
         self._clientToServerDict = {}
         self._serverToClientDict = {}
         self._newFDQueue = newFDQueue
+        self._clientCount = 0
         threading.Thread(target=self.getQueuedSocket).start()
 
     
@@ -31,26 +29,27 @@ class ForwardingThread(threading.Thread):
         if data:
             try:
                 host = self._clientToServerDict[conn]
-                print("forward from client:{0}\nto host:{1}".format(conn, host))
+                #print("forward from client:{0}\nto host:{1}".format(conn, host))
                 host.send(data)
             except KeyError:
                 client = self._serverToClientDict[conn]
-                print("forward from host:{0} to client:{1}".format(conn, client))
+                #print("forward from host:{0} to client:{1}".format(conn, client))
                 client.send(data)
         else:
-            print("connection {} closed".format(conn))
+            self._clientCount -=1
+            print("Thread {}: connection closed.  Serving {} clients".format(self._threadNum, self._clientCount))
             self._selector.unregister(conn)
             conn.close()
             try:
                 server = self._clientToServerDict[conn]
-                print("closing connection to server{}".format(server))
+                #print("closing connection to server{}".format(server))
                 server.close()
                 del self._serverToClientDict[server]
                 del  self._clientToServerDict[conn]
                 self._selector.unregister(server)
             except KeyError:
                 client = self._serverToClientDict[conn]
-                print("closing connection to client{}".format(client))
+                #print("closing connection to client{}".format(client))
                 client.close()
                 del self._clientToServerDict[client]
                 del self._serverToClientDict[conn]
@@ -62,10 +61,12 @@ class ForwardingThread(threading.Thread):
         fd.connect((host, port))
         fd.setblocking(False)
         self._selector.register(fd, selectors.EVENT_READ, self.onRead) 
+        self._clientCount +=1
+        print("Thread {}: connection established.  Serving {} clients".format(self._threadNum, self._clientCount))
         return fd
 
     def run(self):
-
+        print("Starting thread {}".format(self._threadNum))
         while True:
             events = self._selector.select()
             for key, mask in events:
@@ -75,12 +76,11 @@ class ForwardingThread(threading.Thread):
     def getQueuedSocket(self):
         while True:
             (fd, port) = self._newFDQueue.get()
-            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
-            
             forwardFD = self.createConnection(config.PORT_HOSTS[port], port)
             self._clientToServerDict[fd] = forwardFD
             self._serverToClientDict[forwardFD] = fd
-
+            self._selector.register(fd, selectors.EVENT_READ, self.onRead)
+            
 
 class EpollPortForwarder(object):
 
@@ -89,12 +89,12 @@ class EpollPortForwarder(object):
         self._selector = selectors.EpollSelector()
         self._socketNumber = 0
         self._socketQueues = []
-        self._listenSocketForPort = []
-
-        for _ in range(config.WORKER_THREADS):
+        self._listenSocketForPort = {}
+        
+        for i in range(config.WORKER_THREADS):
             socketQueue = Queue()
             self._socketQueues.append(socketQueue)
-            thread = ForwardingThread(socketQueue)
+            thread = ForwardingThread(socketQueue, i)
             thread.start()
 
         for (hostPort, localPort) in config.LOCAL_SERVICE_PORTS.items():
@@ -106,9 +106,9 @@ class EpollPortForwarder(object):
 
     def onAccept(self, sock, mask):
         fd, addr = sock.accept()
-        print("Received connect from {}".format(addr))
+        #print("Main thread received connect from {}".format(addr))
         fd.setblocking(False)
-        self._socketQueues[self._socketNumber % config.WORKER_THREADS].put(fd, self._listenSocketForPort[sock])
+        self._socketQueues[self._socketNumber % config.WORKER_THREADS].put((fd, self._listenSocketForPort[sock]))
         self._socketNumber += 1
 
 

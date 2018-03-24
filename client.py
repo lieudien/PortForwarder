@@ -4,7 +4,7 @@ import socket, threading, logging, sys, time
 import multiprocessing
 
 BUFLINE = 1024
-CLIENT_COUNTS = 1200
+CLIENT_COUNTS = 4000
 
 logging.basicConfig(format='%(asctime)s %(message)s',
                 datefmt='%m/%d/%Y %I:%M:%S %p',
@@ -22,7 +22,7 @@ def thread_task(host, port, i):
     print("Thread {} is running...\n".format(i))
     try:
         while True:
-            msg = "Hello message from {}".format(i)
+            msg = b"Hello message"
             fd.send(msg)
             data = fd.recv(BUFLINE)
             print("Thread {} received from the server...\n".format(i))
@@ -54,6 +54,8 @@ def main():
 
     pool = []
     for i in range(multiprocessing.cpu_count()):
+        #thread = threading.Thread(target=thread_task, args=(serverHost, serverPort, i, ))
+        #thread.start()
         proc = multiprocessing.Process(target=process_task, args=(serverHost, serverPort, ))
         pool.append(proc)
         proc.start()
