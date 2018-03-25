@@ -1,14 +1,14 @@
 #!/usr/bin/python3
 
 try:
-    from Tkinter import *
+    from tkinter import *
 except ImportError:
-    print("Tkinter is not available. Command: dnf install tkinter")
+    print("tkinter is not available. Command: dnf install tkinter")
 
 def show_entry_fields():
     print("Nothing")
 
-master = Tk()
+master = tk()
 
 master.title("Configuration")
 
